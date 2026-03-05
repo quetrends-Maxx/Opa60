@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive 3D Coin</title>
+    <!-- Load Babylon.js directly from CDN -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <style>
+        /* Make the canvas fill the entire screen */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none; /* Prevents default browser zooming/panning on mobile */
+            outline: none;
+        }
+
+        /* Simple overlay for instructions */
+        #ui-overlay {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            color: #ffd700;
+            padding: 10px 20px;
+            border-radius: 20px;
+            pointer-events: none; /* Lets clicks pass through to the 3D canvas */
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            font-size: 14px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="renderCanvas"></canvas>
+    <div id="ui-overlay">Drag to Rotate Coin</div>
+
+    <script>
+        // Get the canvas DOM element
+        const canvas = document.getElementById("renderCanvas");
+        
+        // Initialize the Babylon 3D engine
+        const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
+
+        // Function to create our scene
+        const createScene = function () {
+            // Create a basic BJS Scene object
+            const scene = new BABYLON.Scene(engine);
+            
+            // Set a dark, elegant background color
+            scene.clearColor = new BABYLON.Color4(0.12, 0.12, 0.15, 1);
+
+            // --- CAMERA ---
+            // ArcRotateCamera allows the user to orbit around the coin
+            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2, 5, BABYLON.Vector3.Zero(), scene);
+            
+            // Attach the camera to the canvas so the user can interact
+            camera.attachControl(canvas, true);
+            
+            // Limit zooming so the user can't zoom through the coin or too far away
+            camera.wheelPrecision = 50; 
+            camera.lowerRadiusLimit = 2; 
+            camera.upperRadiusLimit = 15;
+
+            // --- LIGHTING ---
+            const hemiLight = new BABYLON.HemisphericLight("hemiLight", new BABYLON.Vector3(0, 1, 0), scene);
+            hemiLight.intensity = 0.6;
+            hemiLight.groundColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+
+            const dirLight = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(1, -1, 1), scene);
+            dirLight.intensity = 1.2;
+
+            const pointLight = new BABYLON.PointLight("pointLight", new BABYLON.Vector3(-2, 2, -3), scene);
+            pointLight.intensity = 0.8;
+            pointLight.diffuse = new BABYLON.Color3(1, 0.9, 0.6); // Warm gold tint
+
+            // --- PROCEDURAL TEXTURES ---
+            function createRidgedCanvas() {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = 512;
+                tempCanvas.height = 64;
+                const ctx = tempCanvas.getContext('2d');
+                
+                ctx.fillStyle = '#DAA520';
+                ctx.fillRect(0, 0, 512, 64);
+                
+                const numRidges = 120;
+                const ridgeWidth = 512 / numRidges;
+                
+                for(let i = 0; i < numRidges; i++) {
+                    const x = i * ridgeWidth;
+                    const gradient = ctx.createLinearGradient(x, 0, x + ridgeWidth, 0);
+                    gradient.addColorStop(0, '#8B6914');
+                    gradient.addColorStop(0.5, '#FFD700');
+                    gradient.addColorStop(1, '#8B6914');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(x, 0, ridgeWidth, 64);
+                }
+                return tempCanvas;
+            }
+
+            // --- COIN CONSTRUCTION ---
+            const coinParent = new BABYLON.TransformNode("coinParent");
+            coinParent.rotation.x = Math.PI / 2;
+
+            const createGoldMaterial = (name) => {
+                const pbr = new BABYLON.PBRMaterial(name, scene);
+                pbr.metallic = 0.85; 
+                pbr.roughness = 0.25; 
+                pbr.albedoColor = new BABYLON.Color3(1, 0.9, 0.7); 
+                return pbr;
+            };
+
+            // 1. The Edge (Cylinder)
+            const edgeMaterial = createGoldMaterial("edgeMaterial");
+            const ridgedTex = new BABYLON.DynamicTexture("ridgedTex", createRidgedCanvas(), scene);
+            edgeMaterial.albedoTexture = ridgedTex;
+            edgeMaterial.bumpTexture = ridgedTex;
+
+            const edgeMesh = BABYLON.MeshBuilder.CreateCylinder("edge", {
+                height: 0.15,
+                diameter: 3,
+                tessellation: 64
+            }, scene);
+            edgeMesh.material = edgeMaterial;
+            edgeMesh.parent = coinParent;
+
+            // 2. The Front Face (Disc)
+            const frontMaterial = createGoldMaterial("frontMaterial");
+            // Standardized filename for your new front image
+            frontMaterial.albedoTexture = new BABYLON.Texture('front-image.png', scene);
+            
+            const frontMesh = BABYLON.MeshBuilder.CreateDisc("front", { radius: 1.5, tessellation: 64 }, scene);
+            frontMesh.material = frontMaterial;
+            frontMesh.parent = coinParent;
+            frontMesh.position.y = 0.076;
+            frontMesh.rotation.x = -Math.PI / 2;
+
+            // 3. The Back Face (Disc)
+            const backMaterial = createGoldMaterial("backMaterial");
+            // Standardized filename for your new back image
+            backMaterial.albedoTexture = new BABYLON.Texture('back-image.png', scene);
+            
+            const backMesh = BABYLON.MeshBuilder.CreateDisc("back", { radius: 1.5, tessellation: 64 }, scene);
+            backMesh.material = backMaterial;
+            backMesh.parent = coinParent;
+            backMesh.position.y = -0.076;
+            backMesh.rotation.x = Math.PI / 2;
+            backMesh.rotation.y = Math.PI;
+
+            return scene;
+        };
+
+        const scene = createScene();
+
+        engine.runRenderLoop(function () {
+            scene.render();
+        });
+
+        window.addEventListener("resize", function () {
+            engine.resize();
+        });
+    </script>
+</body>
+</html>
